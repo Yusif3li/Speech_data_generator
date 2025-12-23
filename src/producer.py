@@ -8,7 +8,7 @@ from google import genai
 from google.genai import types
 from dotenv import load_dotenv
 
-# --- SETUP ---
+#  SETUP
 load_dotenv()
 api_key = os.getenv("GENAI_API_KEY")
 if not api_key:
@@ -19,12 +19,8 @@ client = genai.Client(api_key=api_key)
 STAGING_DIR = "staging"
 os.makedirs(STAGING_DIR, exist_ok=True)
 
-# --- CONFIGURATION ---
-# موديل الكتابة
+# CONFIGURATION
 TEXT_MODEL_ID = "gemini-2.5-flash"
-
-# موديل الصوت (تم تصحيح الاسم بناءً على القائمة بتاعتك)
-# هذا الموديل يدعم Native Multi-Speaker
 AUDIO_MODEL_ID = "gemini-2.5-flash-preview-tts"
 
 # TOPICS
@@ -69,10 +65,10 @@ def generate_random_episode(episode_number):
     
     print(f"\n🎬 [Test Episode] Topic: {topic}")
 
-    # --- STEP 1: GENERATE SCRIPT (FORCED ARABIC) ---
+    # STEP 1: GENERATE SCRIPT
     print(f"   📝 Generating Script (using {TEXT_MODEL_ID})...")
     
-    # تم تغيير البرومبت للعربية لضمان خروج نص مصري
+
     script_prompt = f"""
     أنت كاتب سيناريو لبرنامج "بودكاست تقني" باللهجة المصرية.
     الموضوع: "{topic}"

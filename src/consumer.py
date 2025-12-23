@@ -71,16 +71,16 @@ def process_new_file(filepath):
     print(f"--> Processing New Podcast: {file_id}")
     
     try:
-        # --- FIX 2: MANUAL LOADING ---
+        #FIX 2: MANUAL LOADING 
         waveform, sample_rate = torchaudio.load(filepath)
         
-        # --- FIX 3: UNWRAP OUTPUT ---
+        # FIX 3: UNWRAP OUTPUT
         inputs = {"waveform": waveform, "sample_rate": sample_rate, "uri": file_id}
         
         # Run pipeline
         output = pipeline(inputs)
         
-        # Logic to handle different return types based on your debug logs
+        # Logic to handle different return types based on debug logs
         if hasattr(output, "speaker_diarization"):
             diarization = output.speaker_diarization
         elif hasattr(output, "annotation"):
@@ -90,7 +90,7 @@ def process_new_file(filepath):
         else:
             diarization = output
 
-        # Verify we have the right object before looping
+        # Verify  have the right object before looping
         if not hasattr(diarization, "itertracks"):
             print(f"⚠️ Debug: Extracted object type is {type(diarization)}")
             raise ValueError("Could not find 'itertracks' even after unwrapping.")
@@ -135,7 +135,7 @@ def process_new_file(filepath):
             
         print(f"--> Finished {file_id}")
 
-        # --- MOVE TO PROCESSED ---
+        # MOVE TO PROCESSED 
         shutil.move(filepath, os.path.join(PROCESSED_DIR, os.path.basename(filepath)))
         
         script_path = filepath.replace("_full.wav", "_script.txt")

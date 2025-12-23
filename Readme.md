@@ -61,3 +61,14 @@ it generates the script and the audio file.
 ```bash
 python src/producer.py
 ```
+
+**📂 Output Structure**
+The pipeline creates a final_dataset folder:
+```bash
+final_dataset/
+├── wavs/
+│   ├── Ep001_Topic_Speaker1_0_1.wav
+│   ├── Ep001_Topic_Speaker2_1500_2.wav
+│   └── ...
+└── metadata.csv  # Format: filename|transcript|speaker_id
+```

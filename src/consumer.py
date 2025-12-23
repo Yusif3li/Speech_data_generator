@@ -26,7 +26,7 @@ os.makedirs(PROCESSED_DIR, exist_ok=True)
 
 # LOAD MODELS
 print("Loading PyAnnote & Whisper... (Wait ~1 min)")
-# Use 'token' for newer library versions
+# Using 'token' based on your library version
 pipeline = Pipeline.from_pretrained("pyannote/speaker-diarization-3.1", token=HF_TOKEN)
 
 # Send model to GPU if available
@@ -34,10 +34,46 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 pipeline.to(device)
 
 print(f"✅ PyAnnote loaded on {device}")
-whisper_model = whisper.load_model("small") 
+# "medium" is much better for Arabic, "large" is best but slower
+whisper_model = whisper.load_model("medium")
+
+def find_diarization_data(output_object):
+    """
+    Hunts for the actual Annotation object inside the wrapper.
+    It checks the object itself, and then all its attributes.
+    """
+    # 1. Check if the object itself is the annotation
+    if hasattr(output_object, "itertracks"):
+        return output_object
+    
+    # 2. Check if it's a dictionary (common in some configs)
+    if isinstance(output_object, dict):
+        if "annotation" in output_object:
+            return output_object["annotation"]
+        if "speaker_diarization" in output_object:
+            return output_object["speaker_diarization"]
+            
+    # 3. Scan all attributes of the object (The Wrapper Case)
+    # We look for ANY attribute that has the 'itertracks' method
+    if hasattr(output_object, "__dict__"):
+        for attr_name in dir(output_object):
+            if attr_name.startswith("__"): continue
+            
+            try:
+                attr_value = getattr(output_object, attr_name)
+                if hasattr(attr_value, "itertracks"):
+                    print(f"   🔎 Found diarization data in attribute: '{attr_name}'")
+                    return attr_value
+            except:
+                continue
+
+    # 4. If all else fails, try explicit known names from logs
+    if hasattr(output_object, "speaker_diarization"):
+        return output_object.speaker_diarization
+        
+    return None
 
 def smart_split_audio(audio_segment, min_len=5000, max_len=8000):
-    """Splits audio on silence into chunks between 5s and 8s."""
     if len(audio_segment) <= max_len:
         return [audio_segment]
         
@@ -55,7 +91,7 @@ def smart_split_audio(audio_segment, min_len=5000, max_len=8000):
         if len(current_chunk) + len(chunk) < max_len:
             current_chunk += chunk
         else:
-            if len(current_chunk) > 1000: # Only save if > 1s
+            if len(current_chunk) > 1000: 
                 final_chunks.append(current_chunk)
             current_chunk = chunk
             
@@ -71,29 +107,23 @@ def process_new_file(filepath):
     print(f"--> Processing New Podcast: {file_id}")
     
     try:
-        #FIX 2: MANUAL LOADING 
+        # Manual Load (Fix for TorchCodec)
         waveform, sample_rate = torchaudio.load(filepath)
-        
-        # FIX 3: UNWRAP OUTPUT
         inputs = {"waveform": waveform, "sample_rate": sample_rate, "uri": file_id}
         
-        # Run pipeline
+        # Run Pipeline
         output = pipeline(inputs)
         
-        # Logic to handle different return types based on debug logs
-        if hasattr(output, "speaker_diarization"):
-            diarization = output.speaker_diarization
-        elif hasattr(output, "annotation"):
-            diarization = output.annotation
-        elif isinstance(output, tuple):
-            diarization = output[0]
-        else:
-            diarization = output
-
-        # Verify  have the right object before looping
-        if not hasattr(diarization, "itertracks"):
-            print(f"⚠️ Debug: Extracted object type is {type(diarization)}")
-            raise ValueError("Could not find 'itertracks' even after unwrapping.")
+        # --- THE HUNTER LOGIC ---
+        diarization = find_diarization_data(output)
+        
+        if diarization is None:
+            # If we still can't find it, print everything to debug
+            print(f"❌ CRITICAL: Could not find diarization data.")
+            print(f"   Output Type: {type(output)}")
+            print(f"   Attributes: {dir(output)}")
+            return
+        # ------------------------
 
         # Load audio for cutting
         audio = AudioSegment.from_wav(filepath)
@@ -130,12 +160,13 @@ def process_new_file(filepath):
                     print(f"   Saved: {chunk_name}")
 
         # Write Metadata
-        with open(f"{DATASET_DIR}/metadata.csv", "a", encoding="utf-8") as f:
+        # 'utf-8-sig' adds the magic character that tells Excel "This is Arabic!"
+        with open(f"{DATASET_DIR}/metadata.csv", "a", encoding="utf-8-sig") as f:
             f.write("\n".join(metadata_rows) + "\n")
             
         print(f"--> Finished {file_id}")
 
-        # MOVE TO PROCESSED 
+        # --- MOVE TO PROCESSED ---
         shutil.move(filepath, os.path.join(PROCESSED_DIR, os.path.basename(filepath)))
         
         script_path = filepath.replace("_full.wav", "_script.txt")

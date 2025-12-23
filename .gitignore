@@ -1,0 +1,26 @@
+# Security (NEVER upload these)
+.env
+.env.local
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.venv/
+env/
+
+# IDE Settings
+.vscode/
+.idea/
+
+# Project Data (Ignore generated audio/text to keep repo light)
+staging/
+final_dataset/
+*.wav
+*.mp3
+
+# Logs and System
+*.log
+.DS_Store
+Thumbs.db

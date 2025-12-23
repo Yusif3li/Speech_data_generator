@@ -1,0 +1,9 @@
+google-genai
+python-dotenv
+pyannote.audio
+openai-whisper
+pydub
+torch
+torchaudio
+watchdog
+tqdm

@@ -10,14 +10,14 @@ from google import genai
 from google.genai import types
 from dotenv import load_dotenv
 
-# CONFIGURATION 
+# CONFIGURATION
 STAGING_DIR = "staging"
 PROCESSED_DIR = os.path.join(STAGING_DIR, "processed")
 
 os.makedirs(STAGING_DIR, exist_ok=True)
-os.makedirs(PROCESSED_DIR, exist_ok=True) # Ensure history folder exists
+os.makedirs(PROCESSED_DIR, exist_ok=True)
 
-# MEGA TOPIC DICTIONARY
+# 1. MEGA TOPIC DICTIONARY
 CS_TOPICS = {
     "Data Structures": [
         "Binary Search Trees", "Hash Maps & Collisions", "Linked Lists vs Arrays", 
@@ -92,39 +92,52 @@ class KeyManager:
 
 key_manager = KeyManager()
 
-# HELPER FUNCTIONS 
+# HELPER FUNCTIONS
 
 def clean_filename(text):
     return re.sub(r'[\\/*?:"<>|]', "", text).replace(" ", "_")
 
-def get_next_episode_number():
-    """Scans STAGING AND PROCESSED directories to find the true next number."""
-    # 1. Check currently staging files
+def get_used_topics():
+    """Scans existing files to see which topics are already done."""
     staging_files = glob.glob(os.path.join(STAGING_DIR, "G-Ai_Studio_Ep*_*.wav"))
-    
-    # 2. Check historically processed files
     processed_files = glob.glob(os.path.join(PROCESSED_DIR, "G-Ai_Studio_Ep*_*.wav"))
-    
     all_files = staging_files + processed_files
     
-    if not all_files:
-        return 1
+    used_clean_topics = set()
+    for f in all_files:
+        base = os.path.basename(f)
+        try:
+            parts = base.split("_Ep") 
+            if len(parts) > 1:
+                rest = parts[1] 
+                rest_parts = rest.split("_", 1)
+                if len(rest_parts) > 1:
+                    topic_part = rest_parts[1] 
+                    # Handle new format with duration inside name
+                    # Remove duration part if exists like "_Dur360s"
+                    topic_clean = re.sub(r"_Dur\d+s", "", topic_part)
+                    topic_clean = topic_clean.replace("_full.wav", "")
+                    used_clean_topics.add(topic_clean)
+        except:
+            continue
+    return used_clean_topics
+
+def get_next_episode_number():
+    staging_files = glob.glob(os.path.join(STAGING_DIR, "G-Ai_Studio_Ep*_*.wav"))
+    processed_files = glob.glob(os.path.join(PROCESSED_DIR, "G-Ai_Studio_Ep*_*.wav"))
+    all_files = staging_files + processed_files
+    
+    if not all_files: return 1
     
     max_num = 0
     for f in all_files:
         try:
-            # Extract number: "G-Ai_Studio_Ep005_Topic.wav" -> "Ep005" -> 5
             base = os.path.basename(f)
             parts = base.split("_")
-            # We look for the part that starts with "Ep"
             for part in parts:
                 if part.startswith("Ep") and part[2:].isdigit():
-                    num = int(part[2:])
-                    if num > max_num:
-                        max_num = num
-        except (IndexError, ValueError):
-            continue
-            
+                    max_num = max(max_num, int(part[2:]))
+        except: continue
     return max_num + 1
 
 def convert_to_wav(audio_data: bytes, mime_type: str) -> bytes:
@@ -150,19 +163,29 @@ def convert_to_wav(audio_data: bytes, mime_type: str) -> bytes:
     )
     return header + audio_data
 
-# MAIN GENERATOR 
+# --- MAIN GENERATOR ---
 
 def generate_episode():
-    # Pick a Topic
-    category = random.choice(list(CS_TOPICS.keys()))
-    topic = random.choice(CS_TOPICS[category])
+    # Get History
+    used_clean = get_used_topics()
     
-    # Dynamic Episode Number
+    # Filter Available Topics
+    available_topics = []
+    for cat, topics in CS_TOPICS.items():
+        for t in topics:
+            if clean_filename(t) not in used_clean:
+                available_topics.append((cat, t))
+    
+    if not available_topics:
+        print("🎉 CONGRATULATIONS! You have generated episodes for ALL topics!")
+        sys.exit(0)
+
+    category, topic = random.choice(available_topics)
     ep_num = get_next_episode_number()
     clean_topic = clean_filename(topic)
     
-    # "G-Ai studio_EP(Episode number)- the subject"
-    file_base_name = f"G-Ai_Studio_Ep{ep_num:03d}_{clean_topic}"
+    # Initial base name
+    temp_base_name = f"G-Ai_Studio_Ep{ep_num:03d}_{clean_topic}"
     
     print(f"\n🎬 [Generating Ep {ep_num}] Category: {category} | Topic: {topic}")
     
@@ -171,20 +194,37 @@ def generate_episode():
     # SCRIPT 
     print(f"   📝 Writing Script...")
     script_prompt = f"""
-    أنت كاتب سيناريو لبرنامج "بودكاست تقني" باللهجة المصرية.
+    أنت كاتب سيناريو محترف لبرنامج "بودكاست تقني" باللهجة المصرية القاهرية (Cairene Slang).
+    هدفنا إنتاج داتا لتدريب نموذج ذكاء اصطناعي صوتي، فالكتابة لازم تكون "طبيعية" جداً.
+
     الموضوع: "{topic}" ({category})
 
     الشخصيات:
-    1. Speaker 1 (سارة): المذيع، تتحدث باللهجة المصرية العامية البسيطة.
-    2. Speaker 2 (أحمد): الضيف (مهندس برمجيات)، يتحدث بلهجة مصرية مثقفة ويستخدم مصطلحات تقنية بالإنجليزية.
+    - Speaker 1 (سارة): المذيعة. دمها خفيف، بتسأل أسئلة اللي لسه بيبدأ، وكلامها تلقائي.
+    - Speaker 2 (أحمد): الضيف (Senior Engineer). خبير، صوته هادي، بيشرح بتبسيط (Analogies) ومن غير تعقيد.
 
-    المطلوب:
-    - اكتب حواراً مدته ستة دقائق.
-    - **اكتب الحوار بالكامل بحروف عربية بلكنة مصرية عامية (اللغة العربية بلكنة مصري).**
-    - استخدم المصطلحات التقنية بالإنجليزية (مثل Algorithm, API) ولكن في سياق جمل عربية.
-    - التزم تماماً بهذا التنسيق (مهم جداً لتوليد الصوت):
-    Speaker 1: [الكلام هنا]
-    Speaker 2: [الكلام هنا]
+    تعليمات الكتابة (Style Guide):
+    1. **عامية مصرية 100%:** ممنوع منعاً باتاً استخدام كلمات فصحى مثل (لماذا، سوف، حيث، هذا، نعم، ولكن).
+    2. **البدائل:** استخدم (ليه، هـ، أصل، ده، أيوه، بس).
+    3. **الإنجليزية:** اكتب المصطلحات التقنية بالإنجليزية كما هي (مثال: API, Deadlock, Database) وسط الكلام العربي.
+    4. **قصر الجمل:** الجمل لازم تكون قصيرة عشان النفس في التوليد الصوتي يكون مظبوط.
+    5. **كلمات الحشو (Fillers):** استخدم كلمات طبيعية زي (يعني، بص، طب، يا سيدي، فاهم قصدي؟) عشان الحوار يبان حقيقي.
+
+    ---
+    مثال على التنسيق والأسلوب المطلوب (Example):
+    
+    Speaker 1: طب يا أحمد، أنا دايماً بسمع كلمة API دي كتير أوي، هو يعني إيه أصلاً؟
+    Speaker 2: بصي يا سارة، تخيلي إنك قاعدة في مطعم، ومعاكي المنيو. أنتي الزبون، والمطبخ هو السيرفر.
+    Speaker 1: تمام، وأنا هطلب الأكل إزاي؟
+    Speaker 2: الله ينور عليكي. الـ Waiter اللي بياخد طلبك يوديه المطبخ ويرجعلك بالأكل.. هو ده الـ API بالظبط!
+    Speaker 1: يااااه! تصدق تصوير عبقري! يعني هو الوسيط اللي بيوصل الطلبات؟
+    Speaker 2: بالظبط كده. من غيره، أنتي مش هتعرفي تدخلي المطبخ تعملي أكلك بنفسك.
+    ---
+
+    المطلوب منك الآن:
+    اكتب حوار كامل عن "{topic}" بنفس الأسلوب "المصري البسيط" اللي في المثال ده.
+    مدة الحوار: حوالي 6 دقائق (حوالي 1000-1200 كلمة).
+    التزم تماماً بأسماء Speaker 1 و Speaker 2.
     """
 
     try:
@@ -194,22 +234,24 @@ def generate_episode():
         )
         script_text = response.text
         
-        with open(f"{STAGING_DIR}/{file_base_name}_script.txt", "w", encoding="utf-8") as f:
+        # Save script initially
+        script_path = f"{STAGING_DIR}/{temp_base_name}_script.txt"
+        with open(script_path, "w", encoding="utf-8") as f:
             f.write(script_text)
         print("   ✅ Script Saved.")
 
     except Exception as e:
         print(f"   ❌ Script Error: {e}")
         if "429" in str(e):
-            print("   ⚠️ Quota exceeded during script. Rotating key...")
+            print("   ⚠️ Quota exceeded during script. Rotating key")
             key_manager.rotate_key()
             return generate_episode()
         return
 
     time.sleep(2)
 
-    # AUDIO 
-    print(f"   🔊 Generating Audio...")
+    # AUDIO
+    print(f"   🔊 Generating Audio")
     
     try:
         client = key_manager.get_client()
@@ -251,24 +293,39 @@ def generate_episode():
         print("\n   💾 Saving Audio...")
         final_wav = convert_to_wav(full_audio_data, first_chunk_mime)
         
-        with open(f"{STAGING_DIR}/{file_base_name}_full.wav", "wb") as f:
+        # 24000 Hz * 1 channel * 2 bytes (16-bit) = 48000 bytes per second
+        duration_sec = len(full_audio_data) / 48000
+        duration_str = f"Dur{int(duration_sec)}s"
+        
+        # Create the Final Filename with Duration
+        final_base_name = f"{temp_base_name}_{duration_str}"
+        final_wav_path = f"{STAGING_DIR}/{final_base_name}_full.wav"
+        
+        # Save Audio with new name
+        with open(final_wav_path, "wb") as f:
             f.write(final_wav)
             
-        print(f"   ✅ Audio Saved: {file_base_name}_full.wav")
+        # IMPORTANT: Rename the script file to match the new audio name
+        # so the consumer can find it later
+        final_script_path = f"{STAGING_DIR}/{final_base_name}_script.txt"
+        if os.path.exists(script_path):
+            os.rename(script_path, final_script_path)
+
+        print(f"   ✅ Audio Saved: {os.path.basename(final_wav_path)}")
         key_manager.increment_usage()
 
     except Exception as e:
         print(f"\n   ❌ Audio Failed: {e}")
         if "429" in str(e):
-             print("   ⚠️ Quota exceeded during audio. Rotating key...")
+             print("   ⚠️ Quota exceeded during audio. Rotating key")
              key_manager.rotate_key()
 
 if __name__ == "__main__":
-    print("🚀 Generator Started (Multi-Key Support + History Check).")
+    print("🚀 Generator Started.")
     try:
         while True:
             generate_episode()
-            print("⏳ Waiting 10 seconds before next episode...")
-            time.sleep(10) 
+            print("⏳ Waiting 10 seconds before next episode")
+            time.sleep(10)
     except KeyboardInterrupt:
         print("\n🛑 Generator Stopped manually.")

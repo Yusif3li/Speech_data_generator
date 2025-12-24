@@ -4,6 +4,7 @@ import shutil
 import torch
 import whisper
 import csv
+import queue
 from pyannote.audio import Pipeline
 from pydub import AudioSegment
 from pydub.silence import split_on_silence
@@ -11,12 +12,13 @@ from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 from dotenv import load_dotenv
 import torchaudio
+import gc 
 
 load_dotenv()
 
 HF_TOKEN = os.getenv("HF_TOKEN")
 
-# CONFIG
+#  CONFIG 
 STAGING_DIR = "staging"
 PROCESSED_DIR = "staging/processed"
 DATASET_DIR = "final_dataset"
@@ -25,7 +27,10 @@ WAV_OUT = f"{DATASET_DIR}/wavs"
 os.makedirs(WAV_OUT, exist_ok=True)
 os.makedirs(PROCESSED_DIR, exist_ok=True)
 
-# LOAD MODELS
+# 1. SETUP QUEUE
+processing_queue = queue.Queue()
+
+# LOAD MODELS 
 print("Loading PyAnnote & Whisper... (Wait ~1 min)")
 pipeline = Pipeline.from_pretrained("pyannote/speaker-diarization-3.1", token=HF_TOKEN)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -33,6 +38,8 @@ pipeline.to(device)
 
 print(f"✅ PyAnnote loaded on {device}")
 whisper_model = whisper.load_model("medium") 
+
+# HELPER FUNCTIONS 
 
 def find_diarization_data(output_object):
     if hasattr(output_object, "itertracks"): return output_object
@@ -64,39 +71,28 @@ def smart_split_audio(audio_segment, min_len=5000, max_len=8000):
     return final_chunks
 
 def get_next_id():
-    """Reads the CSV to find the highest ID and increments it."""
     csv_path = f"{DATASET_DIR}/metadata.csv"
-    if not os.path.exists(csv_path):
-        return 1
-    
+    if not os.path.exists(csv_path): return 1
     try:
         with open(csv_path, "r", encoding="utf-8-sig") as f:
             reader = csv.reader(f)
             header = next(reader, None)
             if not header: return 1
-            
             max_id = 0
             for row in reader:
                 if row and row[0].isdigit():
                     max_id = max(max_id, int(row[0]))
             return max_id + 1
-    except:
-        return 1
+    except: return 1
 
 def write_to_csv(rows):
     csv_path = f"{DATASET_DIR}/metadata.csv"
     file_exists = os.path.isfile(csv_path)
-    
     current_id = get_next_id()
-    
-    # Add IDs to rows
-    # rows input format: [chunk_name, transcript, speaker]
-    # output format: [id, chunk_name, transcript, speaker]
     rows_with_ids = []
     for row in rows:
         rows_with_ids.append([current_id] + row)
         current_id += 1
-    
     with open(csv_path, "a", newline="", encoding="utf-8-sig") as f:
         writer = csv.writer(f)
         if not file_exists:
@@ -106,14 +102,15 @@ def write_to_csv(rows):
 def process_new_file(filepath):
     if not filepath.endswith("_full.wav"): return
     
-    # Clean ID for display (matches new naming convention)
     file_base = os.path.basename(filepath).replace("_full.wav", "")
-    print(f"--> Processing New Podcast: {file_base}")
+    print(f"\n--> 🚀 Processing Podcast: {file_base}")
     
     try:
+        # Load Audio
         waveform, sample_rate = torchaudio.load(filepath)
         inputs = {"waveform": waveform, "sample_rate": sample_rate, "uri": file_base}
         
+        # 1. Diarization
         output = pipeline(inputs)
         diarization = find_diarization_data(output)
         
@@ -121,6 +118,7 @@ def process_new_file(filepath):
             print(f"❌ CRITICAL: Could not find diarization data.")
             return
 
+        # 2. Cutting & Transcribing
         audio = AudioSegment.from_wav(filepath)
         metadata_buffer = []
         
@@ -145,58 +143,101 @@ def process_new_file(filepath):
                 text = result["text"].strip()
                 
                 if len(text) > 2:
-                    # Buffer data: [segment_name, transcript, speaker_id]
-                    # ID will be added in write_to_csv
                     metadata_buffer.append([chunk_name, text, speaker])
                     print(f"   Saved: {chunk_name}")
 
+        # 3. Save Metadata
         if metadata_buffer:
             write_to_csv(metadata_buffer)
             
-        print(f"--> Finished {file_base}")
+        print(f"--> ✅ Finished {file_base}")
 
+        # 4. Move to Processed
         shutil.move(filepath, os.path.join(PROCESSED_DIR, os.path.basename(filepath)))
         script_path = filepath.replace("_full.wav", "_script.txt")
         if os.path.exists(script_path):
             shutil.move(script_path, os.path.join(PROCESSED_DIR, os.path.basename(script_path)))
             
         print(f"    Moved to processed folder")
+
+        # 5. Cleanup Memory
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+        gc.collect()
         
     except Exception as e:
         print(f"❌ Error processing {file_base}: {e}")
         import traceback
         traceback.print_exc()
 
+#  WATCHDOG 
 class Handler(FileSystemEventHandler):
     def on_created(self, event):
         if not event.is_directory and event.src_path.endswith("_full.wav"):
-            print(f"⏳ Detected {os.path.basename(event.src_path)}, waiting for write to finish...")
-            file_path = event.src_path
-            historical_size = -1
-            while True:
-                try:
-                    current_size = os.path.getsize(file_path)
-                    if current_size == historical_size and current_size > 0:
-                        break
-                    historical_size = current_size
-                    time.sleep(2) 
-                except FileNotFoundError: return
-            print(f"✅ File ready. Starting processing.")
-            process_new_file(file_path)
+            print(f"⏳ New file detected: {os.path.basename(event.src_path)}. Added to Queue.")
+            processing_queue.put(event.src_path)
 
+#  MAIN EXECUTION 
 if __name__ == "__main__":
+    
+    #  PRIORITY: Scan for Backlog (Old Files)
+    print(f"🔍 Scanning '{STAGING_DIR}' for unprocessed backlog...")
+    
+    backlog_files = []
+    for filename in os.listdir(STAGING_DIR):
+        if filename.endswith("_full.wav"):
+            full_path = os.path.join(STAGING_DIR, filename)
+            backlog_files.append(full_path)
+    
+    # Sort by creation time (Oldest First)
+    backlog_files.sort(key=os.path.getmtime)
+    
+    for f in backlog_files:
+        print(f"   📜 Found backlog file: {os.path.basename(f)} -> Added to Queue")
+        processing_queue.put(f)
+
+    # Start Watchdog (For Future Files)
     observer = Observer()
     observer.schedule(Handler(), STAGING_DIR, recursive=False)
     observer.start()
-    print(f"👀 Watching '{STAGING_DIR}' for new audio files...")
-    
-    for filename in os.listdir(STAGING_DIR):
-        if filename.endswith("_full.wav"):
-            print(f"Found existing file: {filename}")
-            process_new_file(os.path.join(STAGING_DIR, filename))
+    print(f"👀 Watchdog started. Waiting for new files...")
 
+    # Main Consumer Loop
     try:
-        while True: time.sleep(1)
+        while True:
+            try:
+                # Wait for file in queue (timeout allows loop to check for interrupts)
+                filepath = processing_queue.get(timeout=1)
+                
+                # Check if file exists (it might have been moved if we double-queued it)
+                if not os.path.exists(filepath):
+                    processing_queue.task_done()
+                    continue
+
+                # Wait for file write to complete (Size Check)
+                print(f"⏳ Preparing to process: {os.path.basename(filepath)}")
+                historical_size = -1
+                while True:
+                    try:
+                        if not os.path.exists(filepath): break
+                        current_size = os.path.getsize(filepath)
+                        if current_size == historical_size and current_size > 0:
+                            break
+                        historical_size = current_size
+                        time.sleep(2)
+                    except: break
+                
+                # Process
+                if os.path.exists(filepath):
+                    process_new_file(filepath)
+                
+                processing_queue.task_done()
+                
+            except queue.Empty:
+                pass 
+            except Exception as e:
+                print(f"Error in main loop: {e}")
+
     except KeyboardInterrupt:
         observer.stop()
     observer.join()

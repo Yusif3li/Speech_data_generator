@@ -87,7 +87,7 @@ def smart_split_audio(audio_segment, min_len=2000, max_len=10000):
         min_silence_len=150, 
         silence_thresh=-35, 
         keep_silence=100,
-        seek_step=10 # Fast seeking enabled
+        seek_step=25 # Fast seeking enabled
     )
 
     final_chunks = []
@@ -142,16 +142,33 @@ def get_next_id():
 def write_to_csv(rows):
     csv_path = f"{DATASET_DIR}/metadata.csv"
     file_exists = os.path.isfile(csv_path)
+    
+    # 1. Get IDs safely
     current_id = get_next_id()
     rows_with_ids = []
     for row in rows:
         rows_with_ids.append([current_id] + row)
         current_id += 1
-    with open(csv_path, "a", newline="", encoding="utf-8-sig") as f:
-        writer = csv.writer(f)
-        if not file_exists:
-            writer.writerow(["id", "segment_name", "transcript", "speaker_id"])
-        writer.writerows(rows_with_ids)
+        
+    # 2. Retry Logic (Anti-Crash)
+    max_retries = 5
+    for attempt in range(max_retries):
+        try:
+            with open(csv_path, "a", newline="", encoding="utf-8-sig") as f:
+                writer = csv.writer(f)
+                if not file_exists:
+                    writer.writerow(["id", "segment_name", "transcript", "speaker_id"])
+                writer.writerows(rows_with_ids)
+            return # Success! Exit function.
+            
+        except PermissionError:
+            if attempt < max_retries - 1:
+                print(f"⚠️ CSV is locked (Open in Excel?). Retrying in 1s... ({attempt+1}/{max_retries})")
+                time.sleep(1)
+            else:
+                print(f"❌ CRITICAL ERROR: Could not write to CSV after {max_retries} attempts. Is it still open?")
+                # We don't raise error here to prevent the whole consumer loop from dying, 
+                # but we log it severely. Data for this batch might be lost from CSV but WAVs exist.
 
 def process_new_file(filepath):
     if not filepath.endswith("_full.wav"):

@@ -8,3 +8,4 @@ torch
 torchaudio
 watchdog
 tqdm
+speechbrain

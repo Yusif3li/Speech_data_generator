@@ -1,31 +1,34 @@
-# 🇪🇬 Egyptian Arabic TTS Data Pipeline
+# 🇪🇬 Egyptian Arabic TTS Data Pipeline (High-Performance)
 
-A fully automated pipeline designed to generate, process, and annotate synthetic datasets for training Text-to-Speech (TTS) models in **Egyptian Arabic** and **Standard Arabic**.
+A fully automated, optimized pipeline designed to generate, process, and clean synthetic datasets for training Text-to-Speech (TTS) models in **Egyptian Arabic (Cairene Slang)**.
 
-The pipeline uses a "Producer-Consumer" architecture to generate conversational audio using **Google Gemini** and post-process it using **PyAnnote** (Diarization) and **OpenAI Whisper** (Transcription).
+The pipeline uses a "Producer-Consumer-Cleaner" architecture to generate conversational audio using **Google Gemini**, process it at 10x speed using **Faster-Whisper**, and fix speaker identities using **Biometric Verification (SpeechBrain)**.
 
 ## 🚀 Architecture
 
 1.  **Producer (`src/producer.py`)**:
-    * **Continuous Generation:** Runs in an infinite loop to generate episodes one after another.
-    * **Smart Key Rotation:** Automatically cycles through multiple Google API keys to maximize daily quotas (10 requests per key).
-    * **Context:** Uses `gemini-2.5-flash` to write natural scripts on CS topics (OS, AI, Algos, etc.).
-    * **Audio:** Uses `gemini-2.5-flash-preview-tts` (Native Multi-Speaker) to generate high-quality audio with distinct voices (Zephyr & Puck).
+    * **Infinite Generation:** Runs continuously to create natural Egyptian podcasts on CS topics.
+    * **Smart Key Rotation:** Cycles through multiple Google API keys to maximize quota.
+    * **Context:** Uses `gemini-2.5-flash` with a "Street Smart" prompt to ensure authentic slang.
+    * **Audio:** Uses `gemini-2.5-flash-preview-tts` for high-quality multi-speaker audio.
 
-2.  **Consumer (`src/consumer.py`)**:
-    * **Watcher:** Monitors the `staging` folder for new audio files.
-    * **Speaker Diarization:** Uses `pyannote/speaker-diarization-3.1` to identify who is speaking and when.
-    * **Segmentation:** Cuts the audio into training-ready chunks (3-8 seconds) based on silence.
-    * **Transcription:** Uses `openai-whisper` (Medium model) to generate accurate Arabic text.
-    * **Structured Dataset:** Saves the final wavs and updates a clean `metadata.csv` with headers.
+2.  **Consumer (`src/consumer.py`) - *Optimized for Speed***:
+    * **Watcher:** Monitors `staging` for new files.
+    * **Diarization:** Uses `pyannote/speaker-diarization-3.1` (GPU accelerated).
+    * **Aggressive Splitting:** Cuts audio on `150ms` silence intervals to prevent long segments.
+    * **Fast Transcription:** Uses **Faster-Whisper (Large-v3/Medium)** for 5x inference speed compared to standard Whisper.
+    * **In-Memory Processing:** Minimizes disk I/O for maximum throughput.
+
+3.  **Cleaner (`src/fix_speakers.py`)**:
+    * **Identity Fix:** Scans the dataset and replaces generic tags (`SPEAKER_00`) with correct names (`ahmed`, `sarah`).
+    * **Biometric Matching:** Uses **SpeechBrain** to compare every segment against reference audio fingerprints.
 
 ## 🛠️ Prerequisites
 
 * **Python 3.10+**
-* **FFmpeg** installed and added to system PATH (Required for audio processing).
-* **Google AI Studio API Keys** (Multiple recommended for higher volume).
-* **Hugging Face Access Token** (Read permissions).
-    * *Note:* You must accept the user agreement for `pyannote/speaker-diarization-3.1` on Hugging Face.
+* **FFmpeg** installed and added to system PATH.
+* **NVIDIA GPU** (Highly Recommended for speed).
+* **Hugging Face Token** (Read permissions) - You must accept the user agreement for `pyannote/speaker-diarization-3.1`.
 
 ## 📦 Installation
 
@@ -35,26 +38,28 @@ The pipeline uses a "Producer-Consumer" architecture to generate conversational 
     cd tts-pipeline
     ```
 
-2.  **Install Python dependencies:**
+2.  **Install Dependencies:**
     ```bash
     pip install -r requirements.txt
     ```
 
-3.  **Set up Environment Variables:**
-    Create a `.env` file in the root directory. You can add multiple Google keys separated by commas (no spaces):
+3.  **Environment Setup:**
+    Create a `.env` file in the root directory:
     ```env
-    # Add as many keys as you have to maximize throughput
-    GENAI_API_KEYS=key1_here,key2_here,key3_here
-    
-    HF_TOKEN=your_hugging_face_token_here
+    GENAI_API_KEYS=key1,key2,key3
+    HF_TOKEN=your_hugging_face_token
     ```
+
+## 📂 Setup (Plug & Play)
+
+**Reference Audio Included!** ✅
+We have pre-packaged reference audio files for speaker verification in the `refs/` directory (`ref_ahmed.wav`, `ref_sarah.wav`).
+**No manual recording or setup is required.** Just run the scripts.
 
 ## ▶️ Usage
 
-Open two separate terminal windows:
-
 **Terminal 1 (The Consumer):**
-Starts the listener. It will wait for files and process them automatically.
+Starts the listener. It waits for files, splits them, and transcribes them (Output: `SPEAKER_00`, `SPEAKER_01`).
 ```bash
 python src/consumer.py
 ```
@@ -65,6 +70,12 @@ It generates a Script -> Audio -> Saves to staging.
 To Stop: Press Ctrl+C in the terminal.
 ```bash
 python src/producer.py
+```
+
+**Terminal 3 (The Cleaner - Periodic):** 
+Run this occasionally (e.g., every 500 files) to fix speaker IDs in the CSV.
+```bash
+python src/fix_speakers.py
 ```
 
 ## 📂 Output Structure
@@ -80,5 +91,5 @@ final_dataset/
 **Metadata Format (Standard CSV):**
 | id | segment_name | transcript | speaker_id |
 | :--- | :--- | :--- | :--- |
-| 1 | Ep001_...0.wav | أهلاً بيكم في حلقة جديدة | Speaker 1 |
-| 2 | Ep001_...1.wav | النهاردة هنتكلم عن الـ Algorithms | Speaker 1 |
+| 1 | Ep001_...0.wav | أهلاً بيكم في حلقة جديدة | sarah |
+| 2 | Ep001_...1.wav | النهاردة هنتكلم عن الـ Algorithms | ahmed |

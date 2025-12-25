@@ -53,6 +53,7 @@ class KeyManager:
     def __init__(self):
         load_dotenv()
         keys_str = os.getenv("GENAI_API_KEYS", "")
+
         if not keys_str:
             print("❌ ERROR: GENAI_API_KEYS missing in .env")
             sys.exit(1)
@@ -127,7 +128,8 @@ def get_next_episode_number():
     processed_files = glob.glob(os.path.join(PROCESSED_DIR, "G-Ai_Studio_Ep*_*.wav"))
     all_files = staging_files + processed_files
     
-    if not all_files: return 1
+    if not all_files:
+        return 1
     
     max_num = 0
     for f in all_files:
@@ -137,7 +139,8 @@ def get_next_episode_number():
             for part in parts:
                 if part.startswith("Ep") and part[2:].isdigit():
                     max_num = max(max_num, int(part[2:]))
-        except: continue
+        except:
+            continue
     return max_num + 1
 
 def convert_to_wav(audio_data: bytes, mime_type: str) -> bytes:
@@ -148,7 +151,8 @@ def convert_to_wav(audio_data: bytes, mime_type: str) -> bytes:
         for param in parts:
             if "rate=" in param:
                 rate = int(param.split("=")[1])
-    except: pass
+    except: 
+        pass
 
     num_channels = 1
     data_size = len(audio_data)
@@ -163,7 +167,7 @@ def convert_to_wav(audio_data: bytes, mime_type: str) -> bytes:
     )
     return header + audio_data
 
-# --- MAIN GENERATOR ---
+# MAIN GENERATOR
 
 def generate_episode():
     # Get History

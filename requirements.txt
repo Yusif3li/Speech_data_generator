@@ -2,6 +2,7 @@ google-genai
 python-dotenv
 pyannote.audio
 openai-whisper
+faster-whisper
 pydub
 torch
 torchaudio

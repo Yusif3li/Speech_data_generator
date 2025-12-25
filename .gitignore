@@ -17,8 +17,6 @@ env/
 # Project Data (Ignore generated audio/text to keep repo light)
 staging/
 final_dataset/
-*.wav
-*.mp3
 
 # Logs and System
 *.log

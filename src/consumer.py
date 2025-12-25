@@ -89,7 +89,8 @@ def smart_split_audio(audio_segment, min_len=2000, max_len=10000):
         audio_segment, 
         min_silence_len=150, 
         silence_thresh=-35, 
-        keep_silence=100
+        keep_silence=100,
+        seek_step=10
     )
 
     final_chunks = []

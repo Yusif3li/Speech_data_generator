@@ -18,7 +18,7 @@ load_dotenv()
 
 HF_TOKEN = os.getenv("HF_TOKEN")
 
-#  CONFIG 
+# CONFIG 
 STAGING_DIR = "staging"
 PROCESSED_DIR = "staging/processed"
 DATASET_DIR = "final_dataset"
@@ -77,27 +77,24 @@ def find_diarization_data(output_object):
     return None
 
 def smart_split_audio(audio_segment, min_len=2000, max_len=10000):
-    # لو الملف أصلاً قصير (أقل من 10 ثواني)، رجعه زي ما هو
+    # If file is short (< 10s), return as is
     if len(audio_segment) <= max_len:
         return [audio_segment]
     
-    # (Aggressive Parameters) 
-    # 1. min_silence_len=150: أي سكتة ربع ثانية نعتبرها فاصل (كانت 300)
-    # 2. silence_thresh=-30: خلينا الحساسية أعلى شوية عشان يلقط النفس
-    # 3. keep_silence=100: سيب 100 مللي ثانية بس عشان الكلام مايتقطعش جامد
+    # Aggressive Splitting + Fast Seeking
     chunks = split_on_silence(
         audio_segment, 
         min_silence_len=150, 
         silence_thresh=-35, 
         keep_silence=100,
-        seek_step=10
+        seek_step=10 # Fast seeking enabled
     )
 
     final_chunks = []
     current_chunk = AudioSegment.empty()
 
     for chunk in chunks:
-        # لو الشنك الواحد أكبر من المسموح (نادرة الحدوث بس ممكنة)، خده لوحده
+        # If a single chunk is huge (rare), take it alone
         if len(chunk) > max_len:
             if len(current_chunk) > 0:
                 final_chunks.append(current_chunk)
@@ -106,7 +103,7 @@ def smart_split_audio(audio_segment, min_len=2000, max_len=10000):
             final_chunks.append(chunk)
             continue
 
-        # منطق التجميع (Merger)
+        # Merger Logic
         if len(current_chunk) + len(chunk) < max_len:
             current_chunk += chunk
         else:
@@ -115,7 +112,7 @@ def smart_split_audio(audio_segment, min_len=2000, max_len=10000):
 
             current_chunk = chunk
             
-    # آخر قطعة
+    # Last chunk
     if len(current_chunk) > min_len:
         final_chunks.append(current_chunk)
         
@@ -168,8 +165,14 @@ def process_new_file(filepath):
         waveform, sample_rate = torchaudio.load(filepath)
         inputs = {"waveform": waveform, "sample_rate": sample_rate, "uri": file_base}
         
-        # Diarization
-        output = pipeline(inputs)
+        # FORCE 2 SPEAKERS 
+        # This prevents PyAnnote from creating Speaker 3, 4, etc.
+        try:
+            output = pipeline(inputs, num_speakers=2)
+        except Exception as e:
+            print(f"⚠️ Warning: Could not force 2 speakers (Audio too short?), trying auto. Error: {e}")
+            output = pipeline(inputs)
+
         diarization = find_diarization_data(output)
         
         if diarization is None:
@@ -207,13 +210,13 @@ def process_new_file(filepath):
                 
                 if len(text) > 2:
                     metadata_buffer.append([chunk_name, text, speaker])
-                    print(f"   Saved: {chunk_name}")
+                    # print(f"   Saved: {chunk_name}") # Commented out to reduce console spam
 
         # Save Metadata
         if metadata_buffer:
             write_to_csv(metadata_buffer)
             
-        print(f"--> ✅ Finished {file_base}")
+        print(f"--> ✅ Finished {file_base} | Segments: {len(metadata_buffer)}")
 
         # Move to Processed
         shutil.move(filepath, os.path.join(PROCESSED_DIR, os.path.basename(filepath)))

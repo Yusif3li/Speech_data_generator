@@ -17,34 +17,34 @@ PROCESSED_DIR = os.path.join(STAGING_DIR, "processed")
 os.makedirs(STAGING_DIR, exist_ok=True)
 os.makedirs(PROCESSED_DIR, exist_ok=True)
 
-# 1. MEGA TOPIC DICTIONARY
+# 1. MEGA TOPIC DICTIONARY (SET #2 - FRESH TOPICS)
 CS_TOPICS = {
-    "Data Structures": [
-        "Binary Search Trees", "Hash Maps & Collisions", "Linked Lists vs Arrays", 
-        "Heaps and Priority Queues", "Tries & Prefix Trees", "Graph Adjacency Matrix vs List",
-        "Stack vs Queue Applications", "B-Trees in Databases"
+    "Design Patterns": [
+        "Singleton Pattern (Why & When)", "Factory vs Abstract Factory", "Observer Pattern", 
+        "Strategy Pattern", "Decorator Pattern", "MVC Architecture Explained", 
+        "Dependency Injection", "SOLID Principles: Single Responsibility"
     ],
-    "Algorithms": [
-        "Big O Notation", "Merge Sort vs Quick Sort", "Dijkstra's Algorithm", 
-        "Dynamic Programming: Knapsack", "Depth First Search (DFS)", "Breadth First Search (BFS)",
-        "Binary Search Logic", "A* Pathfinding"
+    "Advanced Algorithms": [
+        "Sliding Window Technique", "Two Pointers Method", "Topological Sort (Graph)", 
+        "Union-Find (Disjoint Set)", "Greedy vs Dynamic Programming", "Floyd-Warshall Algorithm",
+        "Rabin-Karp (String Matching)", "Bit Manipulation Basics"
     ],
-    "Operating Systems": [
-        "Process vs Thread", "Deadlocks & Prevention", "Memory Paging & Segmentation", 
-        "CPU Scheduling Algorithms", "Semaphores vs Mutex", "Virtual Memory", "Context Switching"
+    "System Design & Cloud": [
+        "Docker & Containers vs VM", "API Gateway & Reverse Proxy", "Rate Limiting Algorithms", 
+        "Consistent Hashing", "OAuth 2.0 Flow", "GraphQL vs REST", 
+        "Serverless Architecture (Lambda)", "Event-Driven Architecture"
     ],
-    "Networking": [
-        "TCP vs UDP Handshake", "HTTP vs HTTPS", "DNS Resolution Process", 
-        "OSI Model Layers", "Load Balancing Strategies", "WebSockets vs REST", "CDN Fundamentals"
+    "Security": [
+        "Hashing vs Encryption (Salt)", "JWT (JSON Web Tokens)", "Public Key Cryptography (RSA)", 
+        "SQL Injection & Prevention", "XSS (Cross-Site Scripting)", "HTTPS Handshake Deep Dive"
     ],
-    "Databases": [
-        "SQL Joins Explained", "ACID Properties", "NoSQL vs SQL", "Database Indexing", 
-        "Normalization forms", "Sharding vs Replication", "Redis Caching"
+    "OS & Low Level": [
+        "System Calls (User vs Kernel Mode)", "L1 L2 L3 Caching", "Interrupts vs Polling", 
+        "File Systems (Inode)", "Compilation Process (Linker/Loader)", "Memory Leaks vs Garbage Collection"
     ],
-    "AI & ML": [
-        "Neural Networks Backpropagation", "Convolutional Neural Networks (CNN)", 
-        "Transformers & Attention", "Supervised vs Unsupervised Learning", "Overfitting vs Underfitting", 
-        "Gradient Descent", "Reinforcement Learning Basics"
+    "Advanced Data Structures": [
+        "Bloom Filters", "Skip Lists", "Segment Trees", 
+        "Spatial Indexing (Quadtrees)", "LSM Trees (Log-Structured Merge)"
     ]
 }
 
@@ -115,7 +115,6 @@ def get_used_topics():
                 if len(rest_parts) > 1:
                     topic_part = rest_parts[1] 
                     # Handle new format with duration inside name
-                    # Remove duration part if exists like "_Dur360s"
                     topic_clean = re.sub(r"_Dur\d+s", "", topic_part)
                     topic_clean = topic_clean.replace("_full.wav", "")
                     used_clean_topics.add(topic_clean)
@@ -181,7 +180,7 @@ def generate_episode():
                 available_topics.append((cat, t))
     
     if not available_topics:
-        print("🎉 CONGRATULATIONS! You have generated episodes for ALL topics!")
+        print("🎉 CONGRATULATIONS! You have generated episodes for ALL topics in Set #2!")
         sys.exit(0)
 
     category, topic = random.choice(available_topics)
@@ -195,7 +194,7 @@ def generate_episode():
     
     client = key_manager.get_client()
 
-    # SCRIPT 
+    # SCRIPT GENERATION 
     print(f"   📝 Writing Script...")
     script_prompt = f"""
     ### الدور والمهمة
@@ -280,7 +279,7 @@ def generate_episode():
 
     time.sleep(2)
 
-    # AUDIO
+    # AUDIO GENERATION 
     print(f"   🔊 Generating Audio")
     
     try:
@@ -336,7 +335,6 @@ def generate_episode():
             f.write(final_wav)
             
         # IMPORTANT: Rename the script file to match the new audio name
-        # so the consumer can find it later
         final_script_path = f"{STAGING_DIR}/{final_base_name}_script.txt"
         if os.path.exists(script_path):
             os.rename(script_path, final_script_path)
@@ -351,7 +349,7 @@ def generate_episode():
              key_manager.rotate_key()
 
 if __name__ == "__main__":
-    print("🚀 Generator Started.")
+    print("🚀 Generator Started (Set #2 - Advanced Topics).")
     try:
         while True:
             generate_episode()

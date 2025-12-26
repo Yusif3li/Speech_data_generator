@@ -34,7 +34,7 @@ The pipeline uses a "Producer-Consumer-Cleaner" architecture to generate convers
 
 1.  **Clone the repository:**
     ```bash
-    git clone [https://github.com/yourusername/tts-pipeline.git](https://github.com/yourusername/tts-pipeline.git)
+    git clone https://github.com/Yusif3li/Speech_data_generator.git
     cd tts-pipeline
     ```
 
